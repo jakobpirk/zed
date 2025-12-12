@@ -1,12 +1,13 @@
 use anyhow::{Context as _, Result, bail};
 use async_trait::async_trait;
+use collections::FxHashMap;
 use dap::{DapLocator, DebugRequest, adapters::DebugAdapterName};
 use gpui::SharedString;
 use serde_json::json;
 use smol::io::AsyncReadExt;
 use smol::process::Stdio;
 use std::path::{Path, PathBuf};
-use task::{BuildTaskDefinition, DebugScenario, ShellBuilder, SpawnInTerminal, TaskTemplate};
+use task::{BuildTaskDefinition, DebugScenario, LaunchRequest, ShellBuilder, SpawnInTerminal, TaskTemplate};
 use util::command::new_smol_command;
 
 /// Debug locator for .NET projects
@@ -137,20 +138,14 @@ impl DapLocator for DotNetLocator {
         log::info!("Found output assembly: {}", dll_path);
 
         // Create the debug launch request
-        let debug_request = json!({
-            "name": "Debug .NET Application",
-            "type": "coreclr",
-            "request": "launch",
-            "program": dll_path,
-            "cwd": cwd.to_string_lossy().to_string(),
-            "stopAtEntry": false,
-            "console": "integratedTerminal",
-            "logging": {
-                "engineLogging": false
-            }
-        });
+        let launch_request = LaunchRequest {
+            program: dll_path,
+            cwd: Some(cwd),
+            args: vec![],
+            env: FxHashMap::default(),
+        };
 
-        Ok(DebugRequest::Launch(debug_request))
+        Ok(DebugRequest::Launch(launch_request))
     }
 }
 
@@ -244,7 +239,6 @@ fn find_startup_project_from_solution(solution_path: &Path, solution_dir: &Path)
     // Read the solution file
     let content = std::fs::read_to_string(solution_path).ok()?;
 
-    let mut startup_project_path = None;
     let mut first_exe_project = None;
 
     // Parse solution file to find projects
@@ -265,7 +259,7 @@ fn find_startup_project_from_solution(solution_path: &Path, solution_dir: &Path)
     }
 
     // Prefer the first non-test project found
-    first_exe_project.or(startup_project_path)
+    first_exe_project
 }
 
 /// Extract project path and name from a Project line

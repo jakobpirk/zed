@@ -1,14 +1,16 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use gpui::{App, SharedString};
+use collections::HashMap;
+use gpui::{App, SharedString, Task};
 use language::{
     ContextLocation, ContextProvider, LanguageToolchainStore, ManifestName,
-    ManifestProvider, ManifestQuery, TaskVariables, File,
+    ManifestProvider, ManifestQuery,
 };
-use std::{collections::HashMap, hash::{Hash, Hasher}, path::{Path, PathBuf}, sync::Arc};
+use std::{hash::{Hash, Hasher}, path::{Path, PathBuf}, sync::Arc};
 use std::collections::hash_map::DefaultHasher;
-use task::{TaskTemplate, TaskTemplates};
+use task::{TaskTemplate, TaskTemplates, TaskVariables};
 use util::rel_path::RelPath;
+use util::paths::PathStyle;
 
 /// Manifest provider for .csproj files
 /// Detects .NET project files and returns their directory as the project root
@@ -34,8 +36,8 @@ impl ManifestProvider for CsprojManifestProvider {
             // First, try to find a .csproj with the same name as the directory
             if let Some(dir_name) = ancestor_path.file_name() {
                 let csproj_name = format!("{}.csproj", dir_name);
-                if let Ok(rel_path) = RelPath::new(&csproj_name) {
-                    let project_path = ancestor_path.join(&rel_path);
+                if let Ok(rel_path) = RelPath::new(Path::new(&csproj_name), PathStyle::Posix) {
+                    let project_path = ancestor_path.join(rel_path.as_ref());
                     if delegate.exists(&project_path, Some(false)) {
                         return Some(Arc::from(ancestor_path));
                     }
@@ -44,8 +46,8 @@ impl ManifestProvider for CsprojManifestProvider {
 
             // Also check for common project file names
             for common_name in &["project.csproj", "app.csproj", "web.csproj"] {
-                if let Ok(rel_path) = RelPath::new(common_name) {
-                    let project_path = ancestor_path.join(&rel_path);
+                if let Ok(rel_path) = RelPath::new(Path::new(common_name), PathStyle::Posix) {
+                    let project_path = ancestor_path.join(rel_path.as_ref());
                     if delegate.exists(&project_path, Some(false)) {
                         return Some(Arc::from(ancestor_path));
                     }
@@ -79,8 +81,8 @@ impl ManifestProvider for SolutionManifestProvider {
             // First, try to find a .sln with the same name as the directory
             if let Some(dir_name) = ancestor_path.file_name() {
                 let sln_name = format!("{}.sln", dir_name);
-                if let Ok(rel_path) = RelPath::new(&sln_name) {
-                    let solution_path = ancestor_path.join(&rel_path);
+                if let Ok(rel_path) = RelPath::new(Path::new(&sln_name), PathStyle::Posix) {
+                    let solution_path = ancestor_path.join(rel_path.as_ref());
                     if delegate.exists(&solution_path, Some(false)) {
                         return Some(Arc::from(ancestor_path));
                     }
@@ -89,8 +91,8 @@ impl ManifestProvider for SolutionManifestProvider {
 
             // Also check for common solution file names
             for common_name in &["solution.sln"] {
-                if let Ok(rel_path) = RelPath::new(common_name) {
-                    let solution_path = ancestor_path.join(&rel_path);
+                if let Ok(rel_path) = RelPath::new(Path::new(common_name), PathStyle::Posix) {
+                    let solution_path = ancestor_path.join(rel_path.as_ref());
                     if delegate.exists(&solution_path, Some(false)) {
                         return Some(Arc::from(ancestor_path));
                     }
@@ -115,17 +117,17 @@ impl ContextProvider for CSharpContextProvider {
         _project_env: Option<HashMap<String, String>>,
         _language_toolchain_store: Arc<dyn LanguageToolchainStore>,
         _cx: &mut App,
-    ) -> task::Task<Result<TaskVariables>> {
+    ) -> Task<Result<TaskVariables>> {
         // For now, just return the provided variables without modification
         // A full implementation would parse .csproj files to extract actual values
-        task::Task::ready(Ok(variables.clone()))
+        Task::ready(Ok(variables.clone()))
     }
 
     fn associated_tasks(
         &self,
         _file: Option<Arc<dyn language::File>>,
         _cx: &App,
-    ) -> task::Task<Option<TaskTemplates>> {
+    ) -> Task<Option<TaskTemplates>> {
         // Provide default task templates for common dotnet operations
         let templates = TaskTemplates(vec![
             TaskTemplate {
@@ -153,7 +155,7 @@ impl ContextProvider for CSharpContextProvider {
                 ..Default::default()
             },
         ]);
-        task::Task::ready(Some(templates))
+        Task::ready(Some(templates))
     }
 }
 
@@ -258,7 +260,6 @@ impl SolutionFile {
     /// Parse a .slnx file (XML format)
     fn parse_slnx(content: &str, base_dir: &Path) -> Result<Self> {
         let mut projects = Vec::new();
-        let mut configurations = Vec::new();
         let mut startup_project = None;
 
         // Simple XML parsing for .slnx format
@@ -268,8 +269,6 @@ impl SolutionFile {
         //     <Project Path="..." />
         //   </Projects>
         // </Solution>
-
-        let content_lower = content.to_lowercase();
         
         // Extract projects - look for <Project> tags
         let mut remaining = content;
@@ -319,9 +318,6 @@ impl SolutionFile {
             remaining = &remaining[project_start + project_end + 1..];
         }
 
-        // Default configurations
-        configurations = vec!["Debug".to_string(), "Release".to_string()];
-
         // Default to first executable project if no startup project specified
         if startup_project.is_none() && !projects.is_empty() {
             startup_project = Some(projects[0].guid.clone());
@@ -330,7 +326,7 @@ impl SolutionFile {
         Ok(SolutionFile {
             path: base_dir.join("solution.slnx"),
             projects,
-            configurations,
+            configurations: vec!["Debug".to_string(), "Release".to_string()],
             startup_project,
         })
     }

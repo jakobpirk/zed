@@ -15138,6 +15138,7 @@ dependencies = [
  "schemars",
  "serde",
  "settings",
+ "task",
  "ui",
  "util",
  "workspace",

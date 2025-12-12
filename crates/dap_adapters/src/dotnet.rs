@@ -1,6 +1,7 @@
 use crate::*;
-use anyhow::{Context as _, bail, Result};
-use dap::{DebugRequest, StartDebuggingRequestArguments, adapters::DebugTaskDefinition};
+use anyhow::{bail, Result};
+use collections::HashMap;
+use dap::{StartDebuggingRequestArgumentsRequest, adapters::{DebugAdapterBinary, DebugTaskDefinition}};
 use gpui::SharedString;
 use paths::debug_adapters_dir;
 use serde_json::Value;
@@ -12,7 +13,7 @@ use util::command::new_smol_command;
 /// Supports .NET Framework, .NET Core, and .NET 5+
 #[derive(Default)]
 pub(crate) struct DotNetDebugAdapter {
-    vsdbg_path: OnceCell<Result<std::sync::Arc<Path>, String>>,
+    vsdbg_path: OnceCell<std::sync::Arc<Path>>,
 }
 
 impl DotNetDebugAdapter {
@@ -60,10 +61,17 @@ impl DotNetDebugAdapter {
     }
 
     /// Get or fetch the vsdbg binary path
-    async fn vsdbg_path(&self) -> Result<std::sync::Arc<Path>, String> {
-        self.vsdbg_path
-            .get_or_try_insert(self.fetch_vsdbg().await)
-            .clone()
+    async fn vsdbg_path(&self) -> Result<std::sync::Arc<Path>> {
+        // Try to fetch and cache the path, or return the cached value
+        // If fetch_vsdbg fails, we return the error; subsequent calls will try again
+        match self.vsdbg_path.get() {
+            Some(path) => Ok(path.clone()),
+            None => {
+                let path = self.fetch_vsdbg().await?;
+                let _ = self.vsdbg_path.get_or_init(|| async { path.clone() }).await;
+                Ok(path)
+            }
+        }
     }
 
     /// Generate request arguments for launching a .NET application
@@ -71,16 +79,16 @@ impl DotNetDebugAdapter {
         &self,
         _delegate: &std::sync::Arc<dyn DapDelegate>,
         task_definition: &DebugTaskDefinition,
-    ) -> Result<StartDebuggingRequestArguments> {
+    ) -> Result<(Value, StartDebuggingRequestArgumentsRequest)> {
         let request = if task_definition
             .config
             .get("request")
             .and_then(|v| v.as_str())
             == Some("attach")
         {
-            "attach".to_string()
+            StartDebuggingRequestArgumentsRequest::Attach
         } else {
-            "launch".to_string()
+            StartDebuggingRequestArgumentsRequest::Launch
         };
 
         let mut configuration = task_definition.config.clone();
@@ -91,14 +99,11 @@ impl DotNetDebugAdapter {
         }
 
         // Ensure program path is set for launch requests
-        if request == "launch" && configuration.get("program").is_none() {
+        if request == StartDebuggingRequestArgumentsRequest::Launch && configuration.get("program").is_none() {
             bail!("'program' is required for launch requests");
         }
 
-        Ok(StartDebuggingRequestArguments {
-            configuration,
-            request,
-        })
+        Ok((configuration, request))
     }
 }
 
@@ -106,6 +111,16 @@ impl DotNetDebugAdapter {
 impl DebugAdapter for DotNetDebugAdapter {
     fn name(&self) -> DebugAdapterName {
         Self::DEBUG_ADAPTER_NAME
+    }
+
+    async fn config_from_zed_format(&self, zed_scenario: task::ZedDebugConfig) -> Result<task::DebugScenario> {
+        Ok(task::DebugScenario {
+            adapter: zed_scenario.adapter,
+            label: zed_scenario.label,
+            build: None,
+            config: serde_json::to_value(&zed_scenario.request)?,
+            tcp_connection: None,
+        })
     }
 
     fn dap_schema(&self) -> Value {
@@ -161,29 +176,30 @@ impl DebugAdapter for DotNetDebugAdapter {
     async fn get_binary(
         &self,
         _delegate: &std::sync::Arc<dyn DapDelegate>,
-        _config: &DebugTaskDefinition,
+        config: &DebugTaskDefinition,
         user_installed_path: Option<PathBuf>,
-        _user_args: Option<Vec<String>>,
-        _user_env: Option<std::collections::HashMap<String, String>>,
+        user_args: Option<Vec<String>>,
+        user_env: Option<HashMap<String, String>>,
         _cx: &mut gpui::AsyncApp,
     ) -> Result<DebugAdapterBinary> {
         let binary_path = if let Some(path) = user_installed_path {
-            path.into()
+            path
         } else {
-            self.vsdbg_path().await.map_err(|e| anyhow::anyhow!(e))?
+            self.vsdbg_path().await?.to_path_buf()
         };
 
-        Ok(DebugAdapterBinary::Path(binary_path))
-    }
+        let (configuration, request) = self.request_args(_delegate, config).await?;
 
-    async fn create_request(
-        &self,
-        delegate: &std::sync::Arc<dyn DapDelegate>,
-        config: &DebugTaskDefinition,
-    ) -> Result<DebugRequest> {
-        let args = self.request_args(delegate, config).await?;
-        Ok(DebugRequest::Launch(
-            serde_json::to_value(args).context("Failed to serialize debug arguments")?,
-        ))
+        Ok(DebugAdapterBinary {
+            command: Some(binary_path.to_string_lossy().into_owned()),
+            arguments: user_args.unwrap_or_default(),
+            envs: user_env.unwrap_or_default(),
+            cwd: config.config.get("cwd").and_then(|v| v.as_str()).map(PathBuf::from),
+            connection: None,
+            request_args: dap::StartDebuggingRequestArguments {
+                configuration,
+                request,
+            },
+        })
     }
 }
