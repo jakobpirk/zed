@@ -15125,6 +15125,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "solution_explorer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "collections",
+ "db",
+ "file_icons",
+ "gpui",
+ "languages",
+ "project",
+ "schemars",
+ "serde",
+ "settings",
+ "ui",
+ "util",
+ "workspace",
+ "zed_actions",
+]
+
+[[package]]
 name = "spdx"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -20574,6 +20594,7 @@ dependencies = [
  "smol",
  "snippet_provider",
  "snippets_ui",
+ "solution_explorer",
  "supermaven",
  "svg_preview",
  "sysinfo 0.37.2",

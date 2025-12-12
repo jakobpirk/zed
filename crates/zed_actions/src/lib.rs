@@ -265,6 +265,17 @@ pub mod project_panel {
         ]
     );
 }
+pub mod solution_explorer {
+    use gpui::actions;
+
+    actions!(
+        solution_explorer,
+        [
+            /// Toggles focus on the solution explorer panel.
+            ToggleFocus
+        ]
+    );
+}
 pub mod feedback {
     use gpui::actions;
 

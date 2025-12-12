@@ -149,6 +149,7 @@ members = [
     "crates/search",
     "crates/session",
     "crates/settings",
+    "crates/solution_explorer",
     "crates/settings_json",
     "crates/settings_macros",
     "crates/settings_profile_selector",
@@ -359,6 +360,7 @@ settings_profile_selector = { path = "crates/settings_profile_selector" }
 project = { path = "crates/project" }
 project_panel = { path = "crates/project_panel" }
 project_symbols = { path = "crates/project_symbols" }
+solution_explorer = { path = "crates/solution_explorer" }
 prompt_store = { path = "crates/prompt_store" }
 proto = { path = "crates/proto" }
 recent_projects = { path = "crates/recent_projects" }

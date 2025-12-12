@@ -4,6 +4,7 @@ use node_runtime::NodeRuntime;
 use project::Fs;
 use python::PyprojectTomlManifestProvider;
 use rust::CargoManifestProvider;
+use csharp::{CsprojManifestProvider, SolutionManifestProvider};
 use rust_embed::RustEmbed;
 use settings::SettingsStore;
 use smol::stream::StreamExt;
@@ -20,6 +21,7 @@ use crate::{
 mod bash;
 mod c;
 mod cpp;
+pub mod csharp;
 mod css;
 mod eslint;
 mod go;
@@ -327,9 +329,11 @@ pub fn init(languages: Arc<LanguageRegistry>, fs: Arc<dyn Fs>, node: NodeRuntime
         anyhow::Ok(())
     })
     .detach();
-    let manifest_providers: [Arc<dyn ManifestProvider>; 2] = [
+    let manifest_providers: [Arc<dyn ManifestProvider>; 4] = [
         Arc::from(CargoManifestProvider),
         Arc::from(PyprojectTomlManifestProvider),
+        Arc::from(CsprojManifestProvider),
+        Arc::from(SolutionManifestProvider),
     ];
     for provider in manifest_providers {
         project::ManifestProvidersStore::global(cx).register(provider);

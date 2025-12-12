@@ -1,4 +1,5 @@
 mod codelldb;
+mod dotnet;
 mod gdb;
 mod go;
 mod javascript;
@@ -18,6 +19,7 @@ use dap::{
     },
     configure_tcp_connection,
 };
+use dotnet::DotNetDebugAdapter;
 use gdb::GdbDebugAdapter;
 use go::GoDebugAdapter;
 use gpui::{App, BorrowAppContext};
@@ -29,6 +31,7 @@ use task::{DebugScenario, ZedDebugConfig};
 pub fn init(cx: &mut App) {
     cx.update_default_global(|registry: &mut DapRegistry, _cx| {
         registry.add_adapter(Arc::from(CodeLldbDebugAdapter::default()));
+        registry.add_adapter(Arc::from(DotNetDebugAdapter::default()));
         registry.add_adapter(Arc::from(PythonDebugAdapter::default()));
         registry.add_adapter(Arc::from(JsDebugAdapter::default()));
         registry.add_adapter(Arc::from(GoDebugAdapter::default()));

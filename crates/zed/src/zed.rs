@@ -51,6 +51,7 @@ use paths::{
 };
 use project::{DirectoryLister, DisableAiSettings, ProjectItem};
 use project_panel::ProjectPanel;
+use solution_explorer::SolutionExplorerPanel;
 use prompt_store::PromptBuilder;
 use quick_action_bar::QuickActionBar;
 use recent_projects::open_remote_project;
@@ -655,6 +656,7 @@ fn initialize_panels(
             cx.clone(),
         );
         let debug_panel = DebugPanel::load(workspace_handle.clone(), cx);
+        let solution_explorer_panel = SolutionExplorerPanel::load(workspace_handle.clone(), cx.clone());
 
         async fn add_panel_when_ready(
             panel_task: impl Future<Output = anyhow::Result<Entity<impl workspace::Panel>>> + 'static,
@@ -679,6 +681,7 @@ fn initialize_panels(
             add_panel_when_ready(channels_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(notification_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(debug_panel, workspace_handle.clone(), cx.clone()),
+            add_panel_when_ready(solution_explorer_panel, workspace_handle.clone(), cx.clone()),
             initialize_agent_panel(workspace_handle, prompt_builder, cx.clone()).map(|r| r.log_err())
         );
 
@@ -1024,6 +1027,14 @@ fn register_actions(
              window: &mut Window,
              cx: &mut Context<Workspace>| {
                 workspace.toggle_panel_focus::<OutlinePanel>(window, cx);
+            },
+        )
+        .register_action(
+            |workspace: &mut Workspace,
+             _: &zed_actions::solution_explorer::ToggleFocus,
+             window: &mut Window,
+             cx: &mut Context<Workspace>| {
+                workspace.toggle_panel_focus::<SolutionExplorerPanel>(window, cx);
             },
         )
         .register_action(
